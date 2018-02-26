@@ -6,15 +6,12 @@ import (
 	"os"
 	"os/exec"
 	"syscall"
-	"time"
 	"unsafe"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/gliderlabs/ssh"
-	"github.com/inoc603/go-sshd/asciicast"
 	"github.com/inoc603/go-sshd/auth"
 	"github.com/inoc603/go-sshd/pipe"
-	"github.com/inoc603/go-sshd/storage"
 	"github.com/kr/pty"
 	"github.com/pkg/errors"
 )
@@ -24,16 +21,19 @@ type Option func(s *Server) error
 type Server struct {
 	addr        string
 	hostkeyFile string
-	outputStore storage.Storage
 	userStore   auth.UserStore
 	pkAuth      []auth.PublicKeyAuth
 	pwAuth      []auth.PasswordAuth
+	getRecorder RecorderFactory
 }
 
 func NewServer(opts ...Option) (*Server, error) {
 	s := &Server{
 		addr:      ":22",
 		userStore: &auth.DummyUserStore{},
+		getRecorder: func(ssh.Session) (Recorder, error) {
+			return &DummyRecorder{}, nil
+		},
 	}
 
 	for _, opt := range opts {
@@ -45,16 +45,31 @@ func NewServer(opts ...Option) (*Server, error) {
 	return s, nil
 }
 
+func (s *Server) authPublicKey(ctx ssh.Context, key ssh.PublicKey) bool {
+	for _, a := range s.pkAuth {
+		if a.Auth(ctx, key) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Server) authPassword(ctx ssh.Context, password string) bool {
+	for _, a := range s.pwAuth {
+		if a.Auth(ctx, password) {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Server) Start() error {
 	var opts []ssh.Option
 
-	for _, a := range s.pkAuth {
-		opts = append(opts, ssh.PublicKeyAuth(a.Auth))
-	}
-
-	for _, a := range s.pwAuth {
-		opts = append(opts, ssh.PasswordAuth(a.Auth))
-	}
+	opts = append(opts,
+		ssh.PublicKeyAuth(s.authPublicKey),
+		ssh.PasswordAuth(s.authPassword),
+	)
 
 	if s.hostkeyFile != "" {
 		opts = append(opts, ssh.HostKeyFile(s.hostkeyFile))
@@ -74,6 +89,11 @@ func (s *Server) startCommand(cmd *exec.Cmd, session ssh.Session) error {
 		return errors.Errorf("no pty requested")
 	}
 
+	rec, err := s.getRecorder(session)
+	if err != nil {
+		return errors.Wrap(err, "failed to create recorder")
+	}
+
 	cmd.Env = append(os.Environ(), fmt.Sprintf("TERM=%s", ptyReq.Term))
 	f, err := pty.Start(cmd)
 	if err != nil {
@@ -86,34 +106,11 @@ func (s *Server) startCommand(cmd *exec.Cmd, session ssh.Session) error {
 		}
 	}()
 
-	ctx, ok := session.Context().(ssh.Context)
-	if !ok {
-		panic("SHIT")
-	}
+	stdin := pipe.New(rec.WriteInput)
+	go io.Copy(f, stdin.Reader())
+	go io.Copy(stdin.Writer(), session)
 
-	output, err := s.outputStore.New(ctx)
-	if err != nil {
-		return errors.Wrap(err, "open case file")
-	}
-	defer output.Close()
-
-	rec := asciicast.NewRecorder(output)
-
-	rec.WriteHeader(asciicast.Header{
-		Env: map[string]string{
-			"TERM": ptyReq.Term,
-		},
-		Width:     ptyReq.Window.Width,
-		Height:    ptyReq.Window.Height,
-		Version:   2,
-		Timestamp: time.Now().Unix(),
-	})
-
-	go io.Copy(f, session)
-
-	stdout := pipe.New(func(b []byte) {
-		rec.Log("o", b)
-	})
+	stdout := pipe.New(rec.WriteOutput)
 	go io.Copy(session, stdout.Reader())
 	go io.Copy(stdout.Writer(), f)
 
@@ -161,48 +158,4 @@ func (s *Server) handleSSH(session ssh.Session) {
 
 	l.Infoln("Session ended")
 	session.Exit(0)
-}
-
-func WithAddress(addr string) Option {
-	return func(s *Server) error {
-		s.addr = addr
-		return nil
-	}
-}
-
-func WithAuth(a interface{}) Option {
-	return func(s *Server) error {
-		if pkAuth, ok := a.(auth.PublicKeyAuth); ok {
-			s.pkAuth = append(s.pkAuth, pkAuth)
-			return nil
-		}
-
-		if pwAuth, ok := a.(auth.PasswordAuth); ok {
-			s.pwAuth = append(s.pwAuth, pwAuth)
-			return nil
-		}
-
-		return errors.Errorf("invalid auth middleware")
-	}
-}
-
-func WithHostFile(f string) Option {
-	return func(s *Server) error {
-		s.hostkeyFile = f
-		return nil
-	}
-}
-
-func WithUserStore(us auth.UserStore) Option {
-	return func(s *Server) error {
-		s.userStore = us
-		return nil
-	}
-}
-
-func WithStorage(store storage.Storage) Option {
-	return func(s *Server) error {
-		s.outputStore = store
-		return nil
-	}
 }
