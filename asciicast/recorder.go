@@ -66,6 +66,10 @@ type Header struct {
 	Theme         Theme             `json:"theme,omitempty"`
 }
 
+func (r *Recorder) WriteHeader(h Header) error {
+	return r.encoder.Encode(h)
+}
+
 func (r *Recorder) log(src string, content []byte) error {
 	if r.lastWrite.IsZero() {
 		r.lastWrite = time.Now()

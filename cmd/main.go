@@ -28,7 +28,16 @@ func main() {
 		if err != nil {
 			return nil, errors.Wrap(err, "open output")
 		}
-		return asciicast.NewRecorder(output), nil
+		pty, _, _ := s.Pty()
+		rec := asciicast.NewRecorder(output)
+		return rec, rec.WriteHeader(asciicast.Header{
+			Version: 2,
+			Width:   pty.Window.Width,
+			Height:  pty.Window.Height,
+			Env: map[string]string{
+				"TERM": pty.Term,
+			},
+		})
 	}
 
 	server, err := sshd.NewServer(
