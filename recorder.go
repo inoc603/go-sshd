@@ -1,15 +1,25 @@
 package sshd
 
-import "github.com/gliderlabs/ssh"
+import (
+	"io"
 
-type RecorderFactory func(ssh.Session) (Recorder, error)
+	"github.com/gliderlabs/ssh"
+)
 
 type Recorder interface {
-	WriteInput(b []byte)
-	WriteOutput(b []byte)
+	Start(ssh.Session) (io.WriteCloser, error)
 }
 
 type DummyRecorder struct{}
 
-func (r *DummyRecorder) WriteInput(b []byte)  {}
-func (r *DummyRecorder) WriteOutput(b []byte) {}
+func (r *DummyRecorder) Start(ssh.Session) (io.WriteCloser, error) {
+	return r, nil
+}
+
+func (r *DummyRecorder) Write(p []byte) (n int, err error) {
+	return len(p), nil
+}
+
+func (r *DummyRecorder) Close() error {
+	return nil
+}

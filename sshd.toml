@@ -1,0 +1,12 @@
+listen = [
+	"0.0.0.0:22",
+]
+
+[logging]
+level = "info"
+file = "/data/log/sshd.log"
+
+[[auth]]
+type = "authorized_keys"
+file = "/root/.ssh/authorized_keys"
+

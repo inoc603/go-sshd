@@ -11,7 +11,7 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/gliderlabs/ssh"
 	"github.com/inoc603/go-sshd/auth"
-	"github.com/inoc603/go-sshd/pipe"
+	"github.com/inoc603/go-sshd/internal/pipe"
 	"github.com/kr/pty"
 	"github.com/pkg/errors"
 )

@@ -4,8 +4,8 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/gliderlabs/ssh"
 	sshd "github.com/inoc603/go-sshd"
-	"github.com/inoc603/go-sshd/asciicast"
 	"github.com/inoc603/go-sshd/auth"
+	"github.com/inoc603/go-sshd/internal/asciicast"
 	"github.com/inoc603/go-sshd/storage"
 	"github.com/pkg/errors"
 )
@@ -43,7 +43,7 @@ func main() {
 	server, err := sshd.NewServer(
 		sshd.WithAddress(":2222"),
 		sshd.WithAuth(pkAuth),
-		sshd.WithAuth(auth.NewPamPasswordAuth("passwd")),
+		// sshd.WithAuth(auth.NewPamPasswordAuth("passwd")),
 		sshd.WithUserStore(&auth.LocalUserStore{}),
 		sshd.WithHostFile("/etc/ssh/ssh_host_rsa_key"),
 		sshd.WithRecorder(newAsciinemaRecorder),
