@@ -29,5 +29,8 @@ func (a *PamPasswordAuth) Auth(ctx ssh.Context, password string) bool {
 		return false
 	}
 
-	return t.Authenticate(0) == nil
+	if err = t.Authenticate(0); err != nil {
+		return false
+	}
+	return t.AcctMgmt(0) == nil
 }
